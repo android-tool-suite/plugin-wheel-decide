@@ -39,6 +39,8 @@ gradle -p plugins\wheel-decide clean testDebugUnitTest collectArtifacts
 
 测试覆盖随机源的无偏性、两种采样器对目标分布的精确复现（枚举整个随机空间计数，不留统计误差）、卡方拟合与总变差距离、六种概率方案的边界、四种抽后策略、预设与历史的容错归一化，以及页面元素 id、Capability 调用、设计 token 与清单的一致性。
 
+界面改动可以在桌面浏览器里核对，不必先装到设备上：`node tools/preview/build.mjs` 会把 `src/web` 复制一份、补上宿主主题 token 与内存版传输层替身，`node tools/preview/serve.mjs` 起服务后用 `node tools/preview/shoot.mjs` 按手机、窄屏和宽屏截图，并在出现横向溢出时以非零退出码结束。用法见 `tools/preview/README.md`。
+
 ## 发布通道
 
 - 日常 CI 只测试、构建并上传产物。Debug 通过本地构建和 ADB 导入进行调试，不发布远程版本或调试索引。
