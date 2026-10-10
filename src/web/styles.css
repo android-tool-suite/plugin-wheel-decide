@@ -26,6 +26,9 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;min-he
 button:disabled{opacity:.5;cursor:not-allowed}
 button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ats-primary);outline-offset:2px}
 .primary-action{background:var(--ats-primary);color:var(--ats-on-primary);width:100%;min-height:52px}
+/* Inside a row the button shares the line with its cancel action instead of
+   forcing a full-width line of its own and pushing the row down. */
+.button-row .primary-action{width:auto;flex:1 1 8rem}
 .secondary{background:transparent;color:var(--ats-primary);border:1px solid var(--ats-outline)}
 .text-button{background:transparent;color:var(--ats-primary);padding:var(--ats-space-sm) var(--ats-space-md);min-height:44px}
 .danger{background:transparent;color:var(--ats-error);border:1px solid var(--ats-error)}
@@ -89,10 +92,21 @@ input:focus,select:focus,textarea:focus{border:2px solid var(--ats-primary);padd
 #history-section summary::-webkit-details-marker{display:none}
 #history-section[open] summary{margin-bottom:var(--ats-space-md)}
 
-dialog{width:min(560px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;border:0;border-radius:var(--ats-dialog-radius);padding:var(--ats-space-xl);background:var(--ats-surface);color:var(--ats-on-surface)}
+/* The keyboard does not resize the page on Android, so a centred dialog would
+   leave its primary action underneath the keyboard. `--wheel-keyboard-inset` is
+   the height the keyboard covers; anchoring the dialog box to the space above
+   it keeps every dialog fully reachable while typing. */
+dialog{position:fixed;top:0;left:0;right:0;bottom:var(--wheel-keyboard-inset,0px);margin:auto;width:min(560px,calc(100% - 32px));height:fit-content;max-height:calc(100% - 32px - var(--wheel-keyboard-inset,0px));overflow:auto;border:0;border-radius:var(--ats-dialog-radius);padding:var(--ats-space-xl);background:var(--ats-surface);color:var(--ats-on-surface)}
 /* An author `display` beats the user agent's `dialog:not([open]){display:none}`,
    so the closed state has to be restated here or every dialog paints inline. */
 dialog[open]{display:grid;gap:var(--ats-space-md)}
+/* A dialog that takes typing keeps to the upper part of the screen. Android
+   WebView does not always report the keyboard through visualViewport, and a
+   centred input dialog would leave its action underneath the keyboard. */
+dialog:has(input,textarea){margin-top:var(--ats-space-xxl);margin-bottom:auto}
+/* With the keyboard up the usable height roughly halves, so the dialog tightens
+   its own spacing rather than making the user scroll to reach the action. */
+html[data-keyboard=open] dialog{gap:var(--ats-space-sm);padding:var(--ats-space-lg);max-height:calc(100% - 16px - var(--wheel-keyboard-inset,0px))}
 dialog::backdrop{background:#0008}
 dialog h2{font-size:var(--ats-type-title-large-size);line-height:var(--ats-type-title-large-line);font-weight:var(--ats-type-title-large-weight)}
 .dialog-scroll{min-height:0;overflow:auto;overscroll-behavior:contain}
@@ -111,7 +125,7 @@ dialog h2{font-size:var(--ats-type-title-large-size);line-height:var(--ats-type-
 .preset-pick[aria-pressed=true] .supporting{color:inherit;opacity:.8}
 .preset-edit{display:grid;gap:var(--ats-space-sm);width:100%}
 
-.snackbar{position:fixed;left:var(--ats-space-lg);right:var(--ats-space-lg);bottom:calc(var(--ats-space-lg) + env(safe-area-inset-bottom));z-index:1000;margin:0 auto;width:auto;max-width:var(--ats-content-max-width);display:flex;align-items:center;gap:var(--ats-space-md);padding:var(--ats-space-md) var(--ats-space-lg);border-radius:var(--ats-inner-radius);box-shadow:0 3px 12px #0002;background:var(--ats-on-surface);color:var(--ats-surface);border:0;font-size:var(--ats-type-body-medium-size)}
+.snackbar{position:fixed;left:var(--ats-space-lg);right:var(--ats-space-lg);bottom:calc(var(--ats-space-lg) + env(safe-area-inset-bottom) + var(--wheel-keyboard-inset,0px));z-index:1000;margin:0 auto;width:auto;max-width:var(--ats-content-max-width);display:flex;align-items:center;gap:var(--ats-space-md);padding:var(--ats-space-md) var(--ats-space-lg);border-radius:var(--ats-inner-radius);box-shadow:0 3px 12px #0002;background:var(--ats-on-surface);color:var(--ats-surface);border:0;font-size:var(--ats-type-body-medium-size)}
 .snackbar>span{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .snackbar>button{flex:none;min-height:44px;padding:var(--ats-space-sm);background:transparent;color:inherit}
 

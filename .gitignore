@@ -3,6 +3,8 @@
 /build/
 /node_modules/
 /artifacts/
+/tools/preview/site/
+/tools/preview/output/
 /local.properties
 *.iml
 .idea/

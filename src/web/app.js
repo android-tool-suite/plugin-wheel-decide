@@ -793,7 +793,9 @@
     };
     elements['save-cancel'].onclick = () => closeDialog(elements['save-dialog']);
     elements['open-save'].onclick = () => {
-      elements['save-preset-name'].value = state.wheel.name;
+      /* A temporary wheel is called "临时转盘"; offering that as the preset name
+         would produce two rows with the same label in the picker. */
+      elements['save-preset-name'].value = isTemporaryActive() ? '我的转盘' : state.wheel.name;
       openDialog(elements['save-dialog']);
     };
 
@@ -945,6 +947,25 @@
     }
   }
 
+  /**
+   * Publishes how much of the screen the software keyboard covers, for the
+   * platforms that report it through `visualViewport`. Android WebView often
+   * reports nothing here, which is why the stylesheet also keeps input dialogs
+   * in the upper part of the screen rather than relying on this alone.
+   */
+  function watchKeyboard() {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const apply = () => {
+      const covered = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      document.documentElement.style.setProperty('--wheel-keyboard-inset', `${covered}px`);
+      document.documentElement.dataset.keyboard = covered > 80 ? 'open' : 'closed';
+    };
+    viewport.addEventListener('resize', apply);
+    viewport.addEventListener('scroll', apply);
+    apply();
+  }
+
   function runtimeEvent(message) {
     if (message.event === 'app.backRequested') {
       const open = [...document.querySelectorAll('dialog[open]')].pop();
@@ -984,6 +1005,7 @@
     feedback = globalThis.wheelFeedback.create(elements.snackbar);
     wheel = canvasLib.create(elements.wheel);
     wire();
+    watchKeyboard();
     runtime.on('*', () => {});
     for (const name of ['app.backRequested', 'app.visibilityChanged']) runtime.on(name, runtimeEvent);
 
