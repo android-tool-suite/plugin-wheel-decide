@@ -1,0 +1,106 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>转盘决策</title><link rel="stylesheet" href="/__ats__/theme.css"><link rel="stylesheet" href="styles.css"><script src="random.js" defer></script><script src="sampler.js" defer></script><script src="distribution.js" defer></script><script src="strategies.js" defer></script><script src="wheel-model.js" defer></script><script src="runtime.js" defer></script><script src="storage.js" defer></script><script src="feedback.js" defer></script><script src="wheel-canvas.js" defer></script><script src="build-version.js" defer></script><script src="app.js" defer></script></head><body class="initializing" aria-busy="true">
+<main>
+  <div class="context-row">
+    <button id="wheel-picker" class="account-chip" type="button" aria-haspopup="dialog"><strong id="wheel-name">转盘</strong><small id="wheel-kind" class="badge">已保存预设</small></button>
+    <button id="open-save" class="text-button" type="button">保存为预设</button>
+  </div>
+  <p id="wheel-count" class="supporting"></p>
+
+  <section role="status" aria-live="polite" id="notice" class="notice" hidden></section>
+
+  <section class="card hero" id="stage">
+    <div class="wheel-frame">
+      <canvas id="wheel" role="img" aria-label="转盘"></canvas>
+      <span class="pointer" aria-hidden="true"></span>
+    </div>
+    <div id="result" class="result" aria-live="polite" hidden>
+      <p class="result-label" id="result-label"></p>
+      <p id="result-probability" class="supporting tabular"></p>
+      <p id="result-detail" class="supporting"></p>
+      <ol id="result-more" class="timeline" hidden></ol>
+      <div id="result-actions" class="button-row"><button id="result-copy" class="secondary" type="button">复制结果</button></div>
+    </div>
+    <div class="spin-row">
+      <button id="spin" class="primary-action" type="button"><span id="spin-label">开始抽取</span></button>
+      <label class="field-inline"><span>一次抽</span><select id="draw-count" aria-label="一次抽取几个"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option><option>10</option></select><span>个</span></label>
+    </div>
+    <p id="draw-hint" class="supporting"></p>
+  </section>
+
+  <section class="card" id="distribution-card">
+    <div class="section-header"><h2>概率怎么算</h2><button id="help-open" class="text-button" type="button">说明</button></div>
+    <div class="filter-row wrap" id="modes" role="group" aria-label="概率方案"></div>
+    <p id="mode-summary" class="supporting"></p>
+    <div id="mode-parameter"></div>
+    <label class="field"><span class="field-head"><span>概率下限（%）</span></span><input id="floor" type="number" inputmode="decimal" min="0" max="100" step="1" aria-describedby="floor-hint"><small id="floor-hint" class="supporting">0 表示不设下限</small></label>
+    <div id="notes"></div>
+  </section>
+
+  <section class="card" id="policy-card">
+    <div class="section-header"><h2>抽中之后</h2><button id="reset-round" class="text-button" type="button">重置本轮</button></div>
+    <div class="filter-row wrap" id="policies" role="group" aria-label="抽中之后怎么处理"></div>
+    <p id="policy-summary" class="supporting"></p>
+    <div id="policy-parameter"></div>
+    <p id="round-summary" class="supporting tabular"></p>
+  </section>
+
+  <section class="card" id="options-card">
+    <div class="section-header"><h2>选项</h2><div class="button-row"><button id="options-copy" class="text-button" type="button">复制列表</button><button id="open-import" class="text-button" type="button">批量粘贴</button><button id="add-option" class="text-button" type="button">添加选项</button></div></div>
+    <ol id="options" class="option-list"></ol>
+    <p id="options-empty" class="empty" hidden>还没有选项。添加选项，或批量粘贴每行一个选项的列表。</p>
+    <p id="options-hint" class="supporting"></p>
+  </section>
+
+  <details id="history-section" class="card">
+    <summary><span>抽取历史</span><small id="history-count" class="supporting"></small></summary>
+    <div class="button-row"><button id="history-copy" class="secondary" type="button">复制历史</button><button id="history-clear" class="danger" type="button">清空历史</button></div>
+    <ol id="history" class="timeline"></ol>
+  </details>
+
+  <p id="build-version" class="supporting"></p>
+</main>
+
+<dialog id="preset-dialog" aria-labelledby="preset-title">
+  <div class="section-header"><div><h2 id="preset-title">转盘预设</h2><p id="preset-count" class="supporting"></p></div><button id="preset-close" class="text-button" type="button">关闭</button></div>
+  <ul id="preset-list" class="preset-list dialog-scroll"></ul>
+  <div class="button-row"><button id="preset-new" class="secondary" type="button">新建转盘</button><button id="preset-temporary" class="secondary" type="button">用临时转盘</button></div>
+</dialog>
+
+<dialog id="save-dialog" aria-labelledby="save-title" aria-describedby="save-description">
+  <h2 id="save-title">保存为预设</h2>
+  <p id="save-description" class="supporting">保存后可以随时切回这个转盘，临时转盘本身不会被保留。</p>
+  <label class="field"><span class="field-label">预设名称</span><input id="save-preset-name" type="text" maxlength="60" aria-label="预设名称"></label>
+  <div class="button-row"><button id="save-cancel" class="secondary" type="button">取消</button><button id="save-preset" class="primary-action" type="button">保存为预设</button></div>
+</dialog>
+
+<dialog id="import-dialog" aria-labelledby="import-title">
+  <div class="section-header"><h2 id="import-title">批量粘贴选项</h2><button id="import-cancel" class="text-button" type="button">取消</button></div>
+  <p class="supporting">每行一个选项。行尾可以写数值，例如「吃火锅 3」「看电影,0.5」；以 # 开头的行会被忽略。</p>
+  <label class="field"><span class="field-label">选项文本</span><textarea id="import-text" aria-label="选项文本"></textarea></label>
+  <p id="import-preview" class="supporting" role="status" aria-live="polite"></p>
+  <div class="button-row"><button id="import-apply" class="primary-action" type="button">替换选项</button></div>
+</dialog>
+
+<dialog id="help-dialog" aria-labelledby="help-title">
+  <div class="section-header"><h2 id="help-title">随机是怎么算的</h2><button id="help-close" class="text-button" type="button">关闭</button></div>
+  <div class="dialog-scroll prose">
+    <p>每次抽取都会先按当前方案把每个选项换算成一份概率，再用系统的密码学随机源产生一个无偏的随机整数，落在哪一份就抽中哪个选项。整数运算不会累积浮点误差，取模偏差也用拒绝采样排除了。</p>
+    <h3>评分比例</h3>
+    <p>原始行为：评分翻倍，概率翻倍。只有相对比例有意义，把全部评分同时乘一个数不会改变结果。</p>
+    <h3>softmax 温度</h3>
+    <p>温度越低越集中在高分的少数选项，温度越高越接近等概率。评分差距很大但又不想让低分项彻底出局时，调高温度或加一点概率下限。</p>
+    <h3>排名幂律</h3>
+    <p>忽略数值，只用列表顺序：第 k 项的权重是 1/k 的幂次。适合「心里已经排好优先级」的场景。</p>
+    <h3>概率下限</h3>
+    <p>给每个参与选项保底一份概率，避免某个选项永远抽不到。下限不会超过平均概率。</p>
+  </div>
+</dialog>
+
+<dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-description"></p>
+  <div class="button-row"><button id="confirm-cancel" class="secondary" type="button">取消</button><button id="confirm-action" class="danger" type="button"></button></div>
+</dialog>
+
+<div id="snackbar" class="snackbar" hidden></div>
+</body></html>

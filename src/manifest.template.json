@@ -1,0 +1,110 @@
+{
+  "$schema": "https://android-tool-suite.test/contracts/manifest-v3.schema.json",
+  "format": "ats-plugin",
+  "formatVersion": 3,
+  "plugin": {
+    "id": "wheel_decide",
+    "title": "转盘决策",
+    "description": "用加权随机在多个选项之间做决定：可选等概率、评分比例、直接百分比、倍数、softmax 温度与排名幂律等概率方案；抽中后可自动移除或调整概率；支持保存转盘预设，也支持不留痕的一次性临时转盘。",
+    "version": "@VERSION_NAME@",
+    "versionCode": @VERSION_CODE@,
+    "minHostVersionCode": @MIN_HOST_VERSION_CODE@,
+    "publisher": "android_tool_suite",
+    "kind": "tool"
+  },
+  "platforms": ["android"],
+  "runtime": {
+    "ui": [{ "id": "main", "type": "declarative", "entry": "ui/main.json" }],
+    "background": [],
+    "providers": []
+  },
+  "requires": {
+    "plugins": [],
+    "capabilities": [
+      { "id": "app", "version": "^1.0.0", "optional": false, "scopes": {} },
+      { "id": "storage", "version": "^1.0.0", "optional": false, "scopes": {} },
+      { "id": "clipboard", "version": "^1.0.0", "optional": true, "scopes": {} }
+    ]
+  },
+  "provides": { "capabilities": [] },
+  "contributes": {
+    "tools": [{ "id": "main", "uiEntry": "main" }],
+    "homeWidgets": []
+  },
+  "datasets": [
+    {
+      "id": "wheel-presets",
+      "title": "转盘预设与设置",
+      "category": "settings",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 1048576,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object",
+          "fields": {
+            "wheels": {
+              "kind": "array",
+              "keys": [
+                "id"
+              ],
+              "items": {
+                "kind": "newer",
+                "timestamp": "updatedAt"
+              }
+            },
+            "activeWheelId": {
+              "kind": "current"
+            },
+            "prefs": {
+              "kind": "current"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "wheel-history",
+      "title": "转盘抽取历史",
+      "category": "data",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 4194304,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object",
+          "fields": {
+            "entries": {
+              "kind": "array",
+              "keys": [
+                "id"
+              ],
+              "items": {
+                "kind": "set"
+              },
+              "sortBy": "at",
+              "descending": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "tasks": []
+}

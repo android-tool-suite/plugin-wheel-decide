@@ -1,0 +1,1 @@
+{ "$schema": "https://android-tool-suite.test/contracts/declarative-ui-v1.schema.json", "formatVersion": 1, "body": { "type": "webview", "entry": "web/index.html" } }

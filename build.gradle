@@ -1,0 +1,104 @@
+plugins { id "base" }
+
+def pluginVersionName = "1.0.0"
+def pluginVersionCode = 1
+def minHostVersionCode = 24
+def runtimePackageStaging = layout.buildDirectory.dir("generated/runtime-package")
+
+def generateRuntimeManifest = tasks.register("generateRuntimeManifest") {
+    inputs.property("pluginVersionName", pluginVersionName)
+    inputs.property("pluginVersionCode", pluginVersionCode)
+    inputs.property("minHostVersionCode", minHostVersionCode)
+    inputs.file("src/manifest.template.json")
+    outputs.file(runtimePackageStaging.map { it.file("manifest.json") })
+    doLast {
+        def output = runtimePackageStaging.get().file("manifest.json").asFile
+        output.parentFile.mkdirs()
+        output.setText(file("src/manifest.template.json").getText("UTF-8")
+                .replace("@VERSION_NAME@", pluginVersionName)
+                .replace("@VERSION_CODE@", pluginVersionCode.toString())
+                .replace("@MIN_HOST_VERSION_CODE@", minHostVersionCode.toString()), "UTF-8")
+    }
+}
+
+def prepareRuntimePackage = tasks.register("prepareRuntimePackage") {
+    dependsOn generateRuntimeManifest
+    inputs.file("src/manifest.template.json")
+    inputs.property("pluginVersionName", pluginVersionName)
+    inputs.property("pluginVersionCode", pluginVersionCode)
+    inputs.property("minHostVersionCode", minHostVersionCode)
+    inputs.dir("src/web")
+    inputs.dir("src/ui")
+    outputs.dir(runtimePackageStaging)
+    doLast {
+        def root = runtimePackageStaging.get().asFile
+        delete new File(root, "web"), new File(root, "ui"), new File(root, "workers"), new File(root, "META-INF")
+        copy { from("src/web"); into(new File(root, "web")) }
+        new File(root, "web/build-version.js").setText(
+                "window.wheelBuild = " + groovy.json.JsonOutput.toJson([version: pluginVersionName]) + ";\n", "UTF-8")
+        copy { from("src/ui"); into(new File(root, "ui")) }
+        def payloads = fileTree(root).matching { exclude "META-INF/**" }.files.sort { left, right ->
+            root.toPath().relativize(left.toPath()).toString() <=> root.toPath().relativize(right.toPath()).toString()
+        }
+        def files = payloads.collect { item ->
+            def digest = java.security.MessageDigest.getInstance("SHA-256").digest(item.bytes)
+                    .collect { String.format(java.util.Locale.ROOT, "%02x", it & 0xff) }.join()
+            [path: root.toPath().relativize(item.toPath()).toString().replace('\\', '/'), sha256: digest, size: item.length()]
+        }
+        def meta = new File(root, "META-INF")
+        meta.mkdirs()
+        new File(meta, "ats-integrity.json").setText(
+                groovy.json.JsonOutput.toJson([algorithm: "sha256", files: files, formatVersion: 1]) + "\n", "UTF-8")
+    }
+}
+
+def registerRuntimePackage = { String taskName, String outputPath ->
+    tasks.register(taskName) {
+        dependsOn prepareRuntimePackage
+        def archive = layout.buildDirectory.file(outputPath)
+        inputs.dir(runtimePackageStaging)
+        outputs.file(archive)
+        doLast {
+            def root = runtimePackageStaging.get().asFile
+            def destination = archive.get().asFile
+            destination.parentFile.mkdirs()
+            new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(destination)).withCloseable { zip ->
+                fileTree(root).files.findAll { it.isFile() }.sort { left, right ->
+                    root.toPath().relativize(left.toPath()).toString() <=> root.toPath().relativize(right.toPath()).toString()
+                }.each { item ->
+                    def relative = root.toPath().relativize(item.toPath()).toString().replace('\\', '/')
+                    def entry = new java.util.zip.ZipEntry(relative)
+                    entry.time = 0L
+                    zip.putNextEntry(entry)
+                    item.withInputStream { input -> input.transferTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+        }
+    }
+}
+
+registerRuntimePackage("packageReleasePlugin", "outputs/atsplugin/release/wheel-decide.atsplugin")
+registerRuntimePackage("packagePlugin", "outputs/atsplugin/wheel-decide.atsplugin")
+
+tasks.register("collectArtifacts", Copy) {
+    dependsOn "packagePlugin"
+    group = "distribution"
+    description = "Collects the Wheel Decide format v3 package in the artifacts directory."
+    into layout.projectDirectory.dir("artifacts")
+    from(layout.buildDirectory.dir("outputs/atsplugin")) { include "wheel-decide.atsplugin" }
+}
+
+def testRuntimeJs = tasks.register("testRuntimeJs", Exec) {
+    group = "verification"
+    description = "Runs the format v3 Web business-contract tests."
+    workingDir layout.projectDirectory
+    commandLine "node", "--test", "src/test-js/*.test.mjs"
+}
+
+tasks.register("testDebugUnitTest") {
+    group = "verification"
+    dependsOn testRuntimeJs
+}
+
+tasks.named("check") { dependsOn testRuntimeJs }

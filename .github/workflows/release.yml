@@ -1,0 +1,104 @@
+name: Release plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to validate, for example v1.3.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    environment: release
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+
+      - name: Test release notes and audit changelog history
+        shell: pwsh
+        run: |
+          .\.github\scripts\test-release-notes.ps1
+          . .\.github\scripts\release-notes.ps1
+          $tag = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { '${{ inputs.tag }}' }
+          $version = $tag -replace '^v', ''
+          $null = Get-ChangelogReleaseNotes -Text (Get-Content .\CHANGELOG.md -Raw -Encoding utf8) -Version $version -RequirePublished
+          Assert-ChangelogHistory -RepositoryRoot (Get-Location).Path -CurrentVersion $version
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@90ddb51e90a5fd9ba75f40cf85156b7b41bf76a3
+        with:
+          gradle-version: '8.9'
+
+      - name: Build release package
+        shell: pwsh
+        run: gradle clean packageReleasePlugin
+
+      - name: Prepare release assets
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { '${{ inputs.tag }}' }
+          .\.github\scripts\prepare-release.ps1 `
+            -ArtifactPath .\build\outputs\atsplugin\release\wheel-decide.atsplugin `
+            -OutputDirectory .\release-dist `
+            -ExpectedTag $tag
+
+      - name: Upload dry-run assets
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wheel-release-dry-run-${{ github.sha }}
+          path: release-dist/
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseMetadata = Get-Content -LiteralPath .\release-dist\release-metadata.json -Raw | ConvertFrom-Json
+          $releaseArtifact = Join-Path .\release-dist $releaseMetadata.artifactName
+          gh release create '${{ github.ref_name }}' `
+            $releaseArtifact `
+            .\release-dist\release-metadata.json `
+            .\release-dist\SHA256SUMS.txt `
+            --verify-tag --draft `
+            --title 'Wheel Decide ${{ github.ref_name }}' `
+            --notes-file .\release-dist\release-notes.md
+          gh release edit '${{ github.ref_name }}' --draft=false --latest
+
+      - name: Create registry app token
+        id: registry-app-token
+        if: github.event_name == 'push'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.REGISTRY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REGISTRY_APP_PRIVATE_KEY }}
+          owner: android-tool-suite
+          repositories: plugin-registry
+          permission-contents: write
+
+      - name: Notify plugin registry
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.registry-app-token.outputs.token }}
+        run: .\.github\scripts\dispatch-registry.ps1 -Reference '${{ github.ref_name }}'
