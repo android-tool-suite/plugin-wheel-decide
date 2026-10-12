@@ -15,10 +15,11 @@
   const MODES = [
     {
       id: 'score',
-      label: '评分比例',
-      summary: '按评分占比分配概率，评分翻倍概率翻倍。',
-      inputLabel: '评分',
-      inputHint: '任意正数，只有比例有意义',
+      label: '按权重',
+      summary: '按各项权重占比分配概率，只比较相对大小，不要求合计为 100。',
+      choiceHint: '用数值分配概率',
+      inputLabel: '权重',
+      inputHint: '权重越大，抽中机会越大',
       parameter: null,
       original: true,
     },
@@ -26,31 +27,17 @@
       id: 'equal',
       label: '等概率',
       summary: '每个选项概率相同，忽略填写的数值。',
+      choiceHint: '每项机会相同',
       inputLabel: '不参与',
       inputHint: '此模式下数值被忽略',
       parameter: null,
       original: true,
     },
     {
-      id: 'percent',
-      label: '直接百分比',
-      summary: '直接填写百分比；合计不是 100% 时按比例归一化。',
-      inputLabel: '百分比',
-      inputHint: '例如 30 表示 30%',
-      parameter: null,
-    },
-    {
-      id: 'ratio',
-      label: '倍数',
-      summary: '填写相对倍数，例如 3 表示比基准选项容易 3 倍。',
-      inputLabel: '倍数',
-      inputHint: '例如 0.5 / 1 / 3',
-      parameter: null,
-    },
-    {
       id: 'softmax',
       label: 'softmax 温度',
       summary: '用温度压缩或放大评分差距：温度越低越集中在高分项，越高越接近等概率。',
+      choiceHint: '调整评分差距的影响',
       inputLabel: '评分',
       inputHint: '差距越大影响越强',
       parameter: {
@@ -67,6 +54,7 @@
       id: 'rank',
       label: '排名幂律',
       summary: '按列表顺序衰减：第 k 项权重为 1/k^幂，用来表达“排序即优先级”。',
+      choiceHint: '列表顺序决定优先级',
       inputLabel: '不参与',
       inputHint: '此模式只用列表顺序',
       parameter: {
@@ -150,15 +138,9 @@
         if (spread > 40 * temperature) notes.push('评分差距远大于温度，低分项概率已接近 0，可调高温度。');
         break;
       }
-      case 'percent':
-      case 'ratio':
       case 'score':
       default: {
         weights = entries.map(entry => Math.max(0, finite(entry.value, 0)));
-        if (mode.id === 'percent') {
-          const sum = weights.reduce((total, value) => total + value, 0);
-          if (sum > 0 && Math.abs(sum - 100) > 0.05) notes.push(`百分比合计 ${round(sum, 2)}%，已按比例归一化。`);
-        }
         if (weights.every(value => value <= 0)) {
           weights = entries.map(() => 1);
           notes.push('没有任何正数权重，已按等概率处理。');
@@ -173,11 +155,6 @@
     const sum = weights.reduce((total, value) => total + value, 0);
     if (!(sum > 0)) weights = entries.map(() => 1);
     return { weights, mode: mode.id, notes };
-  }
-
-  function round(value, decimals) {
-    const factor = 10 ** decimals;
-    return Math.round(value * factor) / factor;
   }
 
   /**

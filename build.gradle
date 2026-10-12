@@ -1,7 +1,7 @@
 plugins { id "base" }
 
-def pluginVersionName = "1.0.0"
-def pluginVersionCode = 1
+def pluginVersionName = "1.0.1"
+def pluginVersionCode = 2
 def minHostVersionCode = 24
 def runtimePackageStaging = layout.buildDirectory.dir("generated/runtime-package")
 

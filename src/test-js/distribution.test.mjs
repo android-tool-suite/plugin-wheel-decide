@@ -29,18 +29,23 @@ test('the original equal mode ignores the numbers entirely', () => {
   assert.equal(distribution.modeById('equal').original, true);
 });
 
-test('percent mode normalises a total that is not 100 and says so', () => {
-  const { probabilities, notes } = probabilitiesOf([30, 30, 30], { mode: 'percent' });
+test('the unified weights normalise any total without treating it as percentages', () => {
+  const { probabilities, notes } = probabilitiesOf([30, 30, 30], { mode: 'score' });
   probabilities.forEach(value => assert.ok(Math.abs(value - 1 / 3) < 1e-9));
-  assert.ok(notes.some(note => note.includes('90')), `expected a normalisation note, got ${JSON.stringify(notes)}`);
+  assert.deepEqual(notes, []);
 
-  const exact = probabilitiesOf([10, 20, 70], { mode: 'percent' });
+  const exact = probabilitiesOf([10, 20, 70], { mode: 'score' });
   assert.deepEqual(exact.probabilities.map(value => Math.round(value * 100)), [10, 20, 70]);
   assert.deepEqual(exact.notes, []);
+  const scaled = probabilitiesOf([1, 2, 7], { mode: 'score' });
+  assert.deepEqual(scaled.probabilities, exact.probabilities);
 });
 
-test('ratio mode is a plain multiplier', () => {
-  const { probabilities } = probabilitiesOf([3, 1], { mode: 'ratio' });
+test('the selectable schemes contain only one proportional weight scheme', () => {
+  assert.deepEqual(distribution.MODES.map(mode => mode.id), ['score', 'equal', 'softmax', 'rank']);
+  assert.equal(distribution.modeById('score').label, '按权重');
+  assert.equal(distribution.modeById('score').inputLabel, '权重');
+  const { probabilities } = probabilitiesOf([3, 1], { mode: 'score' });
   assert.ok(Math.abs(probabilities[0] - 0.75) < 1e-9);
   assert.ok(Math.abs(probabilities[1] - 0.25) < 1e-9);
 });

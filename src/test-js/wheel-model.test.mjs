@@ -18,6 +18,26 @@ test('createWheel() always produces a usable wheel', () => {
   assert.deepEqual(wheel.config, model.DEFAULT_CONFIG);
 });
 
+test('draw counts accept every integer in the supported range instead of a preset list', () => {
+  const counts = [1, 7, 9, 11, 20, 21, 100, model.LIMITS.options];
+  for (const count of counts) {
+    assert.equal(model.parseDrawCount(count), count);
+    assert.equal(model.parseDrawCount(String(count)), count);
+    const wheel = wheelOf('甲', '乙');
+    wheel.config = model.normalizeConfig({ drawCount: count });
+    assert.equal(wheel.config.drawCount, count);
+    const outcome = model.spin(wheel, strategies.createRound(), createSource({ seed: 'count-test' }), wheel.config.drawCount);
+    assert.equal(outcome.error, null);
+    assert.equal(outcome.results.length, count);
+  }
+});
+
+test('invalid draw count drafts are rejected instead of rounded or silently clamped', () => {
+  for (const value of ['', ' ', 'abc', '1.5', '0', '-1', '513', 0, -1, 1.5, 513, NaN, Infinity, null, undefined, true]) {
+    assert.equal(model.parseDrawCount(value), null, `accepted invalid count ${String(value)}`);
+  }
+});
+
 test('normalizeWheel() repairs anything storage could hand back', () => {
   const wheel = model.normalizeWheel({
     id: 'wheel-x',

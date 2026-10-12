@@ -5,7 +5,7 @@
   "plugin": {
     "id": "wheel_decide",
     "title": "转盘决策",
-    "description": "用加权随机在多个选项之间做决定：可选等概率、评分比例、直接百分比、倍数、softmax 温度与排名幂律等概率方案；抽中后可自动移除或调整概率；支持保存转盘预设，也支持不留痕的一次性临时转盘。",
+    "description": "用加权随机在多个选项之间做决定：可选按权重、等概率、softmax 温度与排名幂律四种概率方案；抽中后可自动移除或调整概率；一次可抽取 1–512 个结果，支持保存转盘预设和一次性临时转盘。",
     "version": "@VERSION_NAME@",
     "versionCode": @VERSION_CODE@,
     "minHostVersionCode": @MIN_HOST_VERSION_CODE@,

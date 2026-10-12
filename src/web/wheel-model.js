@@ -36,6 +36,13 @@
     return Math.min(maximum, Math.max(minimum, number));
   }
 
+  function parseDrawCount(value) {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 1 && number <= LIMITS.options ? number : null;
+  }
+
   function text(value, maximum, fallback = '') {
     const source = typeof value === 'string' ? value : value == null ? '' : String(value);
     const trimmed = source.replace(/\s+/g, ' ').trim();
@@ -316,6 +323,7 @@
     TEMPORARY_ID,
     randomId,
     clampNumber,
+    parseDrawCount,
     createOption,
     createWheel,
     normalizeWheel,

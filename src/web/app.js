@@ -18,6 +18,7 @@
     check: 'M9.5 17.5 4 12l1.4-1.4 4.1 4.1L18.6 5.6 20 7z',
     close: 'M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z',
     copy: 'M8 3h9a2 2 0 0 1 2 2v11h-2V5H8zM5 7h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z',
+    more: 'M12 5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   };
 
   const state = {
@@ -36,6 +37,7 @@
     pendingConfirm: null,
     persistTimer: null,
     persistPending: { store: false, history: false },
+    disabledControls: [],
   };
 
   const elements = {};
@@ -79,10 +81,6 @@
     if (!Number.isFinite(share)) return '—';
     if (share > 0 && share < 0.05) return '<0.1%';
     return `${share.toFixed(1)}%`;
-  }
-
-  function shareOf(index) {
-    return state.plan.shares[index];
   }
 
   function shareForOption(id) {
@@ -149,32 +147,45 @@
     elements['wheel-name'].textContent = state.wheel.name;
     elements['wheel-kind'].textContent = temporary ? '一次性临时转盘' : '已保存预设';
     elements['wheel-kind'].className = `badge${temporary ? ' temp' : ''}`;
-    elements['wheel-count'].textContent = `${state.wheel.options.length} 个选项 · 参与 ${state.plan.entries.length} 个`;
+    elements['wheel-count'].textContent = `${state.wheel.options.length} 项 · ${state.plan.entries.length} 项参与`;
+    elements['open-save'].textContent = temporary ? '保存预设' : '另存预设';
     elements['save-title'].textContent = temporary ? '保存为预设' : '另存为新预设';
     elements['save-description'].textContent = temporary
       ? '保存后可以随时切回这个转盘，临时转盘本身不会被保留。'
       : '会复制当前转盘为一个新预设，原来的预设保持不变。';
   }
 
-  function renderWheel() {
-    const slices = state.plan.entries.map((entry, index) => ({
+  function renderWheel(plan = state.plan) {
+    elements['wheel-caption'].hidden = true;
+    const slices = plan.entries.map((entry, index) => ({
       label: entry.label,
-      share: state.plan.probabilities[index] ?? 0,
+      share: plan.probabilities[index] ?? 0,
     }));
     wheel.setSlices(slices);
     const summary = slices.length === 0
       ? '转盘当前没有可抽取的选项。'
       : `转盘共 ${slices.length} 个参与选项：${slices
-        .map((slice, index) => `${slice.label} ${shareText(shareOf(index))}`)
+        .map((slice, index) => `${slice.label} ${shareText(plan.shares[index])}`)
         .join('、')}。`;
     elements.wheel.setAttribute('aria-label', summary);
   }
 
+  function renderRulesSummary() {
+    const mode = distribution.modeById(state.wheel.config.mode);
+    const policy = strategies.policyById(state.wheel.config.postSpin);
+    const parts = [mode.label, policy.label];
+    elements['rules-summary'].textContent = parts.join(' · ');
+    if (state.wheel.config.floorPercent > 0) parts.push(`下限 ${state.wheel.config.floorPercent}%`);
+    elements['settings-summary'].textContent = parts.join(' · ');
+  }
+
   function renderModes() {
     elements.modes.replaceChildren(...distribution.MODES.map(mode => {
-      const button = node('button', 'chip');
+      const button = node('button', 'mode-choice');
       button.type = 'button';
-      button.textContent = mode.label;
+      const copy = node('span', 'mode-choice-copy');
+      copy.append(node('span', 'mode-choice-title', mode.label), node('small', 'mode-choice-hint', mode.choiceHint));
+      button.append(copy, icon('check'));
       button.dataset.mode = mode.id;
       button.dataset.control = `mode:${mode.id}`;
       button.setAttribute('aria-pressed', String(mode.id === state.wheel.config.mode));
@@ -321,7 +332,7 @@
       renderWheel();
       schedulePersist('store');
     };
-    label.onchange = () => {
+    label.onchange = event => {
       option.label = event.target.value.trim() === '' ? `选项 ${index + 1}` : event.target.value.trim();
       label.value = option.label;
       commitChange({ structure: true, persist: true });
@@ -354,43 +365,22 @@
     };
 
     const share = node('span', exclusion ? 'option-share option-exclusion' : 'option-share tabular',
-      exclusion ? exclusion.short : shareText(state.plan.shares[active]));
+      exclusion ? exclusion.short : `概率 ${shareText(state.plan.shares[active])}`);
     share.dataset.share = option.id;
     if (exclusion) share.title = exclusion.full;
 
-    const up = iconButton('up', `把${option.label}上移`);
-    up.disabled = index === 0;
-    up.onclick = () => moveOption(index, -1);
-    const down = iconButton('down', `把${option.label}下移`);
-    down.disabled = index === state.wheel.options.length - 1;
-    down.onclick = () => moveOption(index, 1);
+    const more = iconButton('more', `管理选项「${option.label}」`);
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.dataset.control = `actions:${option.id}`;
+    more.onclick = () => openOptionActions(option);
 
-    const toggle = iconButton(option.enabled ? 'eye' : 'eyeOff', option.enabled ? `停用${option.label}` : `启用${option.label}`);
-    toggle.setAttribute('aria-pressed', String(option.enabled));
-    toggle.onclick = () => {
-      option.enabled = !option.enabled;
-      model.touch(state.wheel);
-      commitChange({ structure: true, persist: true });
-    };
-
-    const remove = iconButton('trash', `删除${option.label}`, 'danger-text');
-    remove.onclick = () => {
-      if (state.wheel.options.length <= 1) {
-        feedback.show('至少保留一个选项。', { error: true });
-        return;
-      }
-      state.wheel.options.splice(index, 1);
-      state.round = strategies.reconcile(state.round, state.wheel.options);
-      model.touch(state.wheel);
-      commitChange({ structure: true, persist: true });
-    };
-
-    const main = node('div', 'option-main');
-    main.append(badge, label, share);
-    const meta = node('div', 'option-meta');
     const valueField = node('label', 'option-value-field');
-    valueField.append(node('span', 'option-value-label', distribution.modeById(state.wheel.config.mode).inputLabel), value);
-    meta.append(valueField, up, down, toggle, remove);
+    valueField.append(node('span', 'visually-hidden', distribution.modeById(state.wheel.config.mode).inputLabel), value);
+    valueField.hidden = value.disabled;
+    const main = node('div', `option-main${value.disabled ? ' no-value' : ''}`);
+    main.append(badge, label, valueField, more);
+    const meta = node('div', 'option-meta');
+    meta.append(share);
     row.append(main, meta);
     return row;
   }
@@ -408,7 +398,7 @@
       /* The cell is either a percentage or the reason there is none, never
          both, so the column width stays stable while the wheel changes. */
       holder.className = exclusion ? 'option-share option-exclusion' : 'option-share tabular';
-      holder.textContent = exclusion ? exclusion.short : shareText(state.plan.shares[index]);
+      holder.textContent = exclusion ? exclusion.short : `概率 ${shareText(state.plan.shares[index])}`;
       holder.title = exclusion ? exclusion.full : '';
       holder.closest('.option-row')?.classList.toggle('excluded', Boolean(exclusion));
     }
@@ -418,10 +408,15 @@
     const focused = document.activeElement?.dataset?.control;
     const caret = document.activeElement?.selectionStart ?? null;
     elements.options.replaceChildren(...state.wheel.options.map(optionRow));
+    const noValue = state.wheel.config.mode === 'equal' || state.wheel.config.mode === 'rank';
+    elements['options-columns'].classList.toggle('no-value', noValue);
+    elements['options-value-heading'].hidden = noValue;
+    elements['options-value-heading'].textContent = distribution.modeById(state.wheel.config.mode).inputLabel;
     elements['options-empty'].hidden = state.wheel.options.length > 0;
-    elements['options-hint'].textContent = state.wheel.options.length >= model.LIMITS.options
-      ? `已达上限 ${model.LIMITS.options} 个选项。`
-      : `最多 ${model.LIMITS.options} 个选项；停用的选项不参与抽取。`;
+    elements['options-mode-hint'].textContent = state.wheel.config.mode === 'equal'
+      ? '每个参与选项机会相同'
+      : state.wheel.config.mode === 'rank' ? '列表顺序决定优先级' : distribution.modeById(state.wheel.config.mode).inputHint;
+    renderOptionsHint();
     if (focused) {
       const target = elements.options.querySelector(`[data-control="${focused}"]`);
       if (target) {
@@ -436,12 +431,16 @@
   function renderOptionsHint() {
     elements['options-hint'].textContent = state.wheel.options.length >= model.LIMITS.options
       ? `已达上限 ${model.LIMITS.options} 个选项。`
-      : `最多 ${model.LIMITS.options} 个选项；停用的选项不参与抽取。`;
+      : '更多操作可排序、停用或删除选项。';
   }
 
   function renderResult() {
     const results = state.lastResults;
     elements.result.hidden = results.length === 0;
+    elements['result-heading'].textContent = results.length > 1 ? `本次抽取 · ${results.length} 个` : '本次抽中';
+    elements['result-label'].hidden = results.length > 1;
+    elements['result-probability'].hidden = results.length > 1;
+    elements['result-detail'].hidden = results.length > 1 || !results[0]?.detail;
     elements['result-label'].textContent = results[0]?.label ?? '';
     elements['result-probability'].textContent = results[0] ? `当时概率 ${shareText(results[0].share)}` : '';
     elements['result-detail'].textContent = results[0]?.detail ?? '';
@@ -484,9 +483,37 @@
 
   function renderDrawCount() {
     elements['draw-count'].value = String(state.wheel.config.drawCount);
-    elements['draw-hint'].textContent = state.wheel.config.drawCount === 1
-      ? '一次抽一个'
-      : `一次抽 ${state.wheel.config.drawCount} 个，逐个计算，抽中后的调整会立即生效`;
+    elements['draw-count'].max = String(model.LIMITS.options);
+    validateDrawCount();
+    renderDrawHint();
+  }
+
+  function renderDrawHint() {
+    elements['draw-hint'].hidden = state.wheel.config.drawCount === 1;
+    elements['draw-hint'].textContent = `逐个抽取 ${state.wheel.config.drawCount} 个，抽中后的规则立即生效。`;
+  }
+
+  function validateDrawCount() {
+    const count = model.parseDrawCount(elements['draw-count'].value);
+    const problem = count === null ? `请输入 1–${model.LIMITS.options} 之间的整数。` : '';
+    elements['draw-count'].setCustomValidity(problem);
+    elements['draw-count'].setAttribute('aria-invalid', String(Boolean(problem)));
+    elements['draw-count-error'].textContent = problem;
+    elements['draw-count-error'].hidden = !problem;
+    elements.spin.disabled = state.spinning || Boolean(problem);
+    return count;
+  }
+
+  function updateDrawCount() {
+    const count = validateDrawCount();
+    if (count === null) return null;
+    if (state.wheel.config.drawCount !== count) {
+      state.wheel.config.drawCount = count;
+      model.touch(state.wheel);
+      schedulePersist('store');
+    }
+    renderDrawHint();
+    return count;
   }
 
   function renderDialogs() {
@@ -504,6 +531,7 @@
     renderResult();
     renderHistory();
     renderDrawCount();
+    renderRulesSummary();
     document.body.classList.remove('initializing');
     document.body.removeAttribute('aria-busy');
     state.loading = false;
@@ -523,6 +551,7 @@
     updateOptionShares();
     renderRoundSummary();
     renderResult();
+    renderRulesSummary();
     if (history) renderHistory();
     if (persist) schedulePersist('store');
     if (history) schedulePersist('history');
@@ -536,6 +565,41 @@
     model.touch(state.wheel);
     commitChange({ structure: true, persist: true });
     elements.options.querySelector(`[data-option="${item.id}"] [data-control^="label:"]`)?.focus({ preventScroll: true });
+  }
+
+  function openOptionActions(option) {
+    const index = state.wheel.options.findIndex(item => item.id === option.id);
+    if (index < 0) return;
+    elements['option-dialog-title'].textContent = option.label;
+    elements['option-dialog-description'].textContent = `第 ${index + 1} 个选项 · ${exclusionOf(option)?.full || '参与抽取'}`;
+    const action = (name, title, run, disabled = false, danger = false) => {
+      const button = node('button', `option-action${danger ? ' danger-text' : ''}`);
+      button.type = 'button';
+      button.disabled = disabled;
+      button.append(icon(name), node('span', null, title));
+      button.onclick = () => { closeDialog(elements['option-dialog']); run(); };
+      return button;
+    };
+    const toggle = action(option.enabled ? 'eyeOff' : 'eye', option.enabled ? '停用此选项' : '启用此选项', () => {
+      option.enabled = !option.enabled;
+      model.touch(state.wheel);
+      commitChange({ structure: true, persist: true });
+    });
+    const up = action('up', '向上移动', () => moveOption(index, -1), index === 0);
+    const down = action('down', '向下移动', () => moveOption(index, 1), index === state.wheel.options.length - 1);
+    const remove = action('trash', '删除此选项', () => askConfirm({
+      title: '删除选项',
+      description: `「${option.label}」会从当前转盘中删除，已有抽取记录保留。`,
+      action: '删除选项',
+      run: () => {
+        state.wheel.options = state.wheel.options.filter(item => item.id !== option.id);
+        state.round = strategies.reconcile(state.round, state.wheel.options);
+        model.touch(state.wheel);
+        commitChange({ structure: true, persist: true });
+      },
+    }), state.wheel.options.length <= 1, true);
+    elements['option-dialog-actions'].replaceChildren(toggle, up, down, remove);
+    openDialog(elements['option-dialog']);
   }
 
   /* -------------------------------------------------------------- wheel ops */
@@ -595,27 +659,48 @@
 
   /* ------------------------------------------------------------------ spin */
 
+  function setSpinning(spinning) {
+    state.spinning = spinning;
+    elements['stage'].setAttribute('aria-busy', String(spinning));
+    elements['spin-label'].textContent = spinning ? '抽取中' : '开始抽取';
+    if (spinning) {
+      state.disabledControls = [...document.querySelectorAll('main button, main input, main select')]
+        .filter(control => !control.disabled);
+      for (const control of state.disabledControls) control.disabled = true;
+    } else {
+      for (const control of state.disabledControls) control.disabled = false;
+      state.disabledControls = [];
+    }
+  }
+
   async function spin() {
     if (state.spinning) return;
-    const plan = recompute();
-    if (plan.entries.length === 0) {
+    if (updateDrawCount() === null) return;
+    const animationRound = strategies.tick(strategies.reconcile(state.round, state.wheel.options));
+    let animationPlan = model.buildPlan(state.wheel, animationRound);
+    if (animationPlan.entries.length === 0 && animationRound.removed.length > 0) {
+      animationPlan = model.buildPlan(state.wheel, { ...animationRound, removed: [] });
+    }
+    if (animationPlan.entries.length === 0) {
       feedback.show(state.wheel.options.length === 0 ? '转盘里还没有选项，先添加选项。' : '所有选项都已停用或冷却中。', { error: true });
       return;
     }
-    state.spinning = true;
-    elements.spin.disabled = true;
-    elements['spin-label'].textContent = '抽取中';
-    const winnerIndex = plan.sampler.sample(state.source);
+    setSpinning(true);
     const outcome = model.spin(state.wheel, state.round, state.source, state.wheel.config.drawCount);
     state.round = outcome.round;
     if (outcome.error) {
-      state.spinning = false;
-      elements.spin.disabled = false;
-      elements['spin-label'].textContent = '开始抽取';
+      setSpinning(false);
       feedback.show(outcome.error, { error: true });
       return;
     }
-    const animating = wheel.animateTo(winnerIndex, { turns: 3 + Math.min(3, state.wheel.config.drawCount) });
+    /* Use the first actual result, including the cooldown tick that precedes
+       a draw. A second sample would animate to an unrelated option. */
+    state.plan = animationPlan;
+    renderWheel();
+    const winnerIndex = animationPlan.entries.findIndex(entry => entry.id === outcome.results[0]?.id);
+    const animating = winnerIndex >= 0
+      ? wheel.animateTo(winnerIndex, { turns: 3 + Math.min(3, state.wheel.config.drawCount) })
+      : Promise.resolve();
     state.lastResults = outcome.results;
     const stamp = Date.now();
     for (const [index, result] of outcome.results.entries()) {
@@ -625,11 +710,14 @@
     }
     state.history = model.normalizeHistory({ entries: state.history });
     await animating;
-    state.spinning = false;
-    elements.spin.disabled = false;
-    elements['spin-label'].textContent = '开始抽取';
+    setSpinning(false);
     for (const text of outcome.notices) feedback.show(text);
     commitChange({ structure: true, persist: true, history: true });
+    /* Keep the chosen slice under the pointer after remove/decay/cooldown has
+       changed the next draw's probabilities. Edits or the next spin redraw it. */
+    renderWheel(animationPlan);
+    elements['wheel-caption'].hidden = false;
+    elements.wheel.setAttribute('aria-label', `本次抽中${outcome.results[0].label}。${elements.wheel.getAttribute('aria-label')}`);
   }
 
   /* --------------------------------------------------------------- dialogs */
@@ -782,6 +870,15 @@
   /* ------------------------------------------------------------- interaction */
 
   function wire() {
+    elements['option-dialog-close'].onclick = () => closeDialog(elements['option-dialog']);
+    elements['open-settings'].onclick = () => {
+      elements['settings-section'].open = true;
+      elements['settings-section'].scrollIntoView({ block: 'start', behavior: canvasLib.prefersReducedMotion() ? 'instant' : 'smooth' });
+      elements['settings-section'].querySelector('summary').focus({ preventScroll: true });
+    };
+    elements['settings-section'].addEventListener('toggle', () => {
+      elements['open-settings'].setAttribute('aria-expanded', String(elements['settings-section'].open));
+    });
     elements['wheel-picker'].onclick = () => { renderPresets(); openDialog(elements['preset-dialog']); };
     elements['preset-close'].onclick = () => closeDialog(elements['preset-dialog']);
     elements['preset-new'].onclick = () => { newWheel(); closeDialog(elements['preset-dialog']); };
@@ -801,11 +898,9 @@
 
     elements.spin.onclick = () => { void spin(); };
 
-    elements['draw-count'].onchange = event => {
-      state.wheel.config.drawCount = model.clampNumber(Number(event.target.value), 1, 20, 1);
-      model.touch(state.wheel);
-      commitChange({ structure: false, persist: true });
-      renderDrawCount();
+    elements['draw-count'].oninput = updateDrawCount;
+    elements['draw-count'].onchange = () => {
+      if (updateDrawCount() !== null) renderDrawCount();
     };
 
     elements.floor.onchange = event => {
@@ -966,13 +1061,13 @@
     apply();
   }
 
-  function runtimeEvent(message) {
-    if (message.event === 'app.backRequested') {
+  function runtimeEvent(name, payload) {
+    if (name === 'app.backRequested') {
       const open = [...document.querySelectorAll('dialog[open]')].pop();
       if (open) open.close();
       return;
     }
-    if (message.event === 'app.visibilityChanged' && message.payload.visible !== false) {
+    if (name === 'app.themeChanged' || (name === 'app.visibilityChanged' && payload.visible !== false)) {
       wheel.render();
     }
   }
@@ -982,17 +1077,19 @@
   function collect() {
     for (const id of [
       'wheel-name', 'wheel-kind', 'wheel-count', 'wheel-picker', 'save-preset', 'open-save',
-      'wheel', 'spin', 'spin-label', 'draw-count', 'draw-hint',
-      'result', 'result-label', 'result-probability', 'result-detail', 'result-more', 'result-actions', 'result-copy',
+      'wheel', 'wheel-caption', 'stage', 'spin', 'spin-label', 'draw-count', 'draw-count-error', 'draw-hint',
+      'rules-summary', 'open-settings', 'settings-section', 'settings-summary',
+      'result', 'result-heading', 'result-label', 'result-probability', 'result-detail', 'result-more', 'result-actions', 'result-copy',
       'modes', 'mode-summary', 'mode-parameter', 'floor', 'floor-hint', 'notes',
       'policies', 'policy-summary', 'policy-parameter', 'round-summary', 'reset-round',
-      'options', 'options-empty', 'options-hint', 'options-copy', 'add-option', 'open-import',
+      'options', 'options-empty', 'options-hint', 'options-mode-hint', 'options-columns', 'options-value-heading', 'options-copy', 'add-option', 'open-import',
       'history-section', 'history', 'history-count', 'history-clear', 'history-copy',
       'notice', 'snackbar',
       'preset-dialog', 'preset-list', 'preset-count', 'preset-close', 'preset-new', 'preset-temporary',
       'save-dialog', 'save-title', 'save-description', 'save-preset-name', 'save-cancel', 'save-preset',
       'import-dialog', 'import-text', 'import-preview', 'import-apply', 'import-cancel',
       'help-dialog', 'help-open', 'help-close',
+      'option-dialog', 'option-dialog-title', 'option-dialog-description', 'option-dialog-actions', 'option-dialog-close',
       'confirm-dialog', 'confirm-title', 'confirm-description', 'confirm-action', 'confirm-cancel',
       'build-version',
     ]) {
@@ -1007,7 +1104,9 @@
     wire();
     watchKeyboard();
     runtime.on('*', () => {});
-    for (const name of ['app.backRequested', 'app.visibilityChanged']) runtime.on(name, runtimeEvent);
+    for (const name of ['app.backRequested', 'app.visibilityChanged', 'app.themeChanged']) {
+      runtime.on(name, payload => runtimeEvent(name, payload));
+    }
 
     try {
       await runtime.ready;
